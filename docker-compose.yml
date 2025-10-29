@@ -1,52 +1,91 @@
 services:
+  # ==========================
+  # 🐇 RabbitMQ (mensajería)
+  # ==========================
   rabbitmq:
     image: rabbitmq:3.11-management
+    container_name: rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
+
+  # ==========================
+  # 🐘 PostgreSQL (base de datos)
+  # ==========================
   db:
-    image: postgres
-    restart: always
-    # set shared memory limit when using docker compose
-    shm_size: 128mb
-    # or set shared memory limit when deploy via swarm stack
-    #volumes:
-    #  - type: tmpfs
-    #    target: /dev/shm
-    #    tmpfs:
-    #      size: 134217728 # 128*2^20 bytes = 128Mb
+    image: postgres:15
+    container_name: postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
-
-  adminer:
-    image: adminer
-    restart: always
     ports:
-      - 8080:8080
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-#  producer:
-#    build: ./producers
-#    depends_on:
-#      - rabbitmq
-#    restart: on-failure
+    restart: unless-stopped
 
-#  consumer:
-#    build: ./consumers
-#    depends_on:
-#      - rabbitmq
-#      - postgres
-#    restart: on-failure
+  # ==========================
+  # 🧰 Adminer (UI para PostgreSQL)
+  # ==========================
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
 
+  # ==========================
+  # 🌤 Producer (envía datos)
+  # ==========================
+  producer:
+    build: ./producers
+    container_name: producer
+    environment:
+      - RABBIT_USER=${RABBIT_USER}
+      - RABBIT_PASS=${RABBIT_PASS}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_EXCHANGE=weather_exchange
+      - ROUTING_KEY=weather.data
+    depends_on:
+      - rabbitmq
+    restart: on-failure
+
+  # ==========================
+  # 🌦 Consumer (recibe y guarda)
+  # ==========================
+  consumer:
+    build: ./consumers
+    container_name: consumer
+    environment:
+      - RABBIT_USER=${RABBIT_USER}
+      - RABBIT_PASS=${RABBIT_PASS}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_EXCHANGE=weather_exchange
+      - RABBITMQ_QUEUE=weather_queue
+      - ROUTING_KEY=weather.data
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=${POSTGRES_PORT}
+    depends_on:
+      - rabbitmq
+      - db
+    restart: on-failure
+
+# ==========================
+# Volúmenes persistentes
+# ==========================
 volumes:
   rabbitmq_data:
   postgres_data:
