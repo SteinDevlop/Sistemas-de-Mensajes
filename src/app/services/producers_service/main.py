@@ -40,19 +40,32 @@ def generar_datos():
     }
 
 # ==========================
+# Función de conexión con reintentos
+# ==========================
+def connect_with_retry(params, max_attempts=None):
+    attempt = 0
+    backoff = 0.5
+    while True:
+        attempt += 1
+        try:
+            logging.info("Intentando conexión a RabbitMQ (intento %d)...", attempt)
+            return pika.BlockingConnection(params)
+        except Exception as e:
+            logging.error("Conexión fallida (intento %d): %s", attempt, e)
+            if max_attempts and attempt >= max_attempts:
+                logging.error("Superado número máximo de intentos.")
+                raise
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 10)
+
+# ==========================
 # Función principal
 # ==========================
 def main():
-    credentials = pika.PlainCredentials(RABBIT_USER, RABBIT_PASS)
-    params = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        port=RABBITMQ_PORT,
-        credentials=credentials
-    )
-
-    logging.info(f"Conectando a RabbitMQ en {RABBITMQ_HOST}:{RABBITMQ_PORT} con usuario '{RABBIT_USER}'...")
-    
-    connection = pika.BlockingConnection(params)
+    credentials = pika.PlainCredentials(RABBIT_USER or "guest", RABBIT_PASS or "guest")
+    params = pika.ConnectionParameters(host=RABBITMQ_HOST or "rabbitmq", port=RABBITMQ_PORT, credentials=credentials)
+    logging.info("Conectando a RabbitMQ en %s:%s con usuario '%s'...", RABBITMQ_HOST, RABBITMQ_PORT, RABBIT_USER)
+    connection = connect_with_retry(params)
     channel = connection.channel()
 
     # Declarar exchange duradero

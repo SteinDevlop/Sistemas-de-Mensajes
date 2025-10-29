@@ -5,14 +5,17 @@ services:
   rabbitmq:
     image: rabbitmq:3.11-management
     container_name: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     restart: unless-stopped
 
   # ==========================
@@ -30,6 +33,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
     restart: unless-stopped
 
   # ==========================
@@ -48,39 +52,28 @@ services:
   # 🌤 Producer (envía datos)
   # ==========================
   producer:
-    build: ./producers
-    container_name: producer
+    build:
+      context: ./src/app/services/producers_service
+    depends_on:
+      - rabbitmq
     environment:
       - RABBIT_USER=${RABBIT_USER}
       - RABBIT_PASS=${RABBIT_PASS}
       - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_EXCHANGE=weather_exchange
-      - ROUTING_KEY=weather.data
-    depends_on:
-      - rabbitmq
     restart: on-failure
 
   # ==========================
   # 🌦 Consumer (recibe y guarda)
   # ==========================
   consumer:
-    build: ./consumers
-    container_name: consumer
+    build:
+      context: ./src/app/services/consumers_service
+    depends_on:
+      - rabbitmq
     environment:
       - RABBIT_USER=${RABBIT_USER}
       - RABBIT_PASS=${RABBIT_PASS}
       - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_EXCHANGE=weather_exchange
-      - RABBITMQ_QUEUE=weather_queue
-      - ROUTING_KEY=weather.data
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=${POSTGRES_PORT}
-    depends_on:
-      - rabbitmq
-      - db
     restart: on-failure
 
 # ==========================
