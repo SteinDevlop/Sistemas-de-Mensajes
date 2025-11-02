@@ -11,6 +11,11 @@ from psycopg2 import OperationalError, sql
 
 # 1. IMPORTAR LA FUNCIÓN AVANZADA DE LOGGING
 from utils.logger import setup_logger
+
+from prometheus_client import start_http_server, Counter
+
+
+
 # ==============================
 # CONFIGURACIÓN DE LOGGING AVANZADA (¡CAMBIADO!)
 # ==============================
@@ -19,6 +24,12 @@ LOG_DIR = os.getenv("LOG_DIR", "logs") # Directorio de logs dentro del contenedo
 # Los logs irán a la consola Y al archivo 'logs/consumer.log'
 logger = setup_logger("CONSUMER_LOG", f"{LOG_DIR}/consumer.log")
 
+# Contador de mensajes procesados
+MESSAGES_PROCESSED = Counter('messages_processed_total', 'Mensajes procesados correctamente')
+
+# Arrancar el servidor Prometheus en puerto 8000
+start_http_server(8000)
+logger.info("Servidor de métricas Prometheus iniciado en puerto 8000")
 # ==============================
 # VARIABLES DE ENTORNO
 # ==============================
