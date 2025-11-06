@@ -1,0 +1,13 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Instalar dependencias básicas para tests
+RUN pip install pytest pytest-cov pika psycopg2-binary docker
+
+# Montar el socket de Docker para permitir control de contenedores
+VOLUME /var/run/docker.sock
+
+COPY . .
+
+CMD ["pytest", "-v", "--cov=.", "tests/"]
