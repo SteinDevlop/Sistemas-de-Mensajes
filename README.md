@@ -40,6 +40,12 @@ Se plantea al siguiente esquema PostgreSQL para el almacenamiento de datos
 1. Clona el repositorio.
 2. Ejecuta el comando: docker-compose up
 
+Si se quieren correr los pocos pero efectivos tests que se han implementado:
+
+1. Construye el test con el comando: docker-compose build tests
+
+2. Corre los tests con el comando: docker-compose run --rm tests
+
 ### Soporte de Docker
 
 Los entornos de desarrollo y despliegue se contenerizan mediante un `Dockerfile` personalizado, compatible con sistemas Linux. Este incluye todas las configuraciones y dependencias necesarias para una replicación consistente del entorno.
@@ -50,13 +56,22 @@ Los entornos de desarrollo y despliegue se contenerizan mediante un `Dockerfile`
 
 ```
 Sistemas-de-Mensajes
-├── docs
-├── src
-│   ├── backend
-│   │   └── app
-            ├── services    
-                ├──consumers_service
-                ├──producers_service
+───docs
+├───init
+├───logs
+├───monitoring
+└───src
+    └───app
+        ├───logs
+        ├───services
+        │   ├───consumers_service
+        │   │   └───utils
+        │   └───producers_service
+        └───tests
+            ├───.pytest_cache
+            │   └───v
+            │       └───cache
+            └───__pycache__
 ```
 
 ---
@@ -64,7 +79,7 @@ Sistemas-de-Mensajes
 ## Equipo
 
 - **Mario Alberto Julio Wilches**
-- **Alejandro Villa Real**
+- **Alejandro Villareal Imitola**
 - **Alejandro Pedro Steinman Cuesta**
 - **Ana Sofia Meza**
 
