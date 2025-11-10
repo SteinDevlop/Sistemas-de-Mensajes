@@ -61,6 +61,8 @@ services:
       - RABBIT_USER=${RABBIT_USER}
       - RABBIT_PASS=${RABBIT_PASS}
       - RABBITMQ_HOST=rabbitmq
+    ports:
+      - "8001:8001"
     volumes:
       - ./logs:/app/logs
     restart: on-failure
@@ -82,9 +84,11 @@ services:
       - RABBIT_PASS=${RABBIT_PASS}
       - RABBITMQ_HOST=rabbitmq
       - POSTGRES_HOST=db
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+    ports:
+      - "8000:8000"
     volumes:
       - ./logs:/app/logs
     restart: on-failure
@@ -116,10 +120,17 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     ports:
       - "3000:3000"
     depends_on:
       - prometheus
+    volumes:
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json:ro
+      - grafana_storage:/var/lib/grafana
     networks:
       - backend
 
@@ -151,6 +162,7 @@ services:
 volumes:
   rabbitmq_data:
   postgres_data:
+  grafana_storage:
 
 # ==========================
 # Red compartida

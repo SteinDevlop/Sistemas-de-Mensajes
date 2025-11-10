@@ -5,6 +5,7 @@ import time
 import logging
 import os
 from datetime import datetime
+from prometheus_client import Counter, start_http_server
 
 # ==========================
 # Configuración de logging
@@ -13,6 +14,13 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
+
+# ==========================
+# Métricas Prometheus
+# ==========================
+MESSAGES_PUBLISHED = Counter('messages_published_total', 'Total de mensajes publicados en RabbitMQ')
+start_http_server(8001)  # Producer expone métricas en puerto 8001
+logging.info("Servidor de métricas Prometheus iniciado en puerto 8001")
 
 # ==========================
 # Variables de entorno (.env)
@@ -91,6 +99,7 @@ def main():
                 )
             )
 
+            MESSAGES_PUBLISHED.inc()
             logging.info(f"Mensaje publicado: {message}")
             time.sleep(5)
 

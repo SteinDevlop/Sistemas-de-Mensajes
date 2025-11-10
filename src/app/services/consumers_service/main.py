@@ -196,6 +196,7 @@ def insertar_weather(data: dict) -> None:
       )
     conn.commit()
     logger.info("Inserción en DB exitosa (station=%s).", data.get("id_station"))
+    MESSAGES_PROCESSED.inc()
   except Exception as e:
     conn.rollback()
     logger.exception("Error al insertar en DB, se hace rollback.")
