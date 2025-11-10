@@ -7,7 +7,6 @@ from typing import Optional
 
 import pika
 import psycopg2
-import socket
 from psycopg2 import OperationalError, sql
 
 # 1. IMPORTAR LA FUNCIÓN AVANZADA DE LOGGING
@@ -27,6 +26,10 @@ logger = setup_logger("CONSUMER_LOG", f"{LOG_DIR}/consumer.log")
 
 # Contador de mensajes procesados
 MESSAGES_PROCESSED = Counter('messages_processed_total', 'Mensajes procesados correctamente')
+
+# Arrancar el servidor Prometheus en puerto 8000
+start_http_server(8000)
+logger.info("Servidor de métricas Prometheus iniciado en puerto 8000")
 # ==============================
 # VARIABLES DE ENTORNO
 # ==============================
@@ -82,20 +85,6 @@ def connect_db_with_retry(max_retries: int = DB_MAX_RETRIES) -> psycopg2.extensi
   attempt = 0
   while True:
     try:
-      # First ensure the DB hostname resolves in DNS before attempting to connect.
-      try:
-        socket.getaddrinfo(POSTGRES_HOST, POSTGRES_PORT)
-      except socket.gaierror as e:
-        attempt += 1
-        logger.warning("No se puede resolver el hostname '%s' (intento %d/%d): %s", POSTGRES_HOST, attempt, max_retries, e)
-        if attempt >= max_retries:
-          logger.error("No se pudo resolver el hostname '%s' después de %d intentos.", POSTGRES_HOST, max_retries)
-          raise OperationalError(f"could not resolve host {POSTGRES_HOST}")
-        sleep_time = DB_RETRY_BASE_SLEEP * (2 ** (attempt - 1))
-        logger.info("Reintentando resolución en %.1f segundos...", sleep_time)
-        time.sleep(sleep_time)
-        continue
-
       dsn = make_db_dsn()
       conn = psycopg2.connect(dsn, password=POSTGRES_PASSWORD, sslmode=POSTGRES_SSLMODE)
       conn.autocommit = False
@@ -297,27 +286,6 @@ def procesar_mensaje(ch: pika.channel.Channel, method, properties, body: bytes):
 # ==============================
 
 def main():
-  # Start Prometheus metrics HTTP server here (runtime) so startup logs are
-  # emitted once per process start and controlled by the main loop.
-  try:
-    start_http_server(8000)
-    logger.info("Servidor de métricas Prometheus iniciado en puerto 8000")
-  except Exception:
-    logger.exception("No se pudo iniciar el servidor Prometheus")
-
-  # Ensure DB is reachable before starting to consume messages. This uses the
-  # existing connect_db_with_retry which has exponential backoff.
-  try:
-    conn_check = connect_db_with_retry()
-    # close the check connection immediately; we'll open connections lazily
-    try:
-      conn_check.close()
-    except Exception:
-      pass
-  except Exception as e:
-    logger.warning("No se pudo verificar DB antes de consumir: %s", e)
-    # continue: the main loop will still try to connect on demand
-
   credentials = pika.PlainCredentials(RABBIT_USER, RABBIT_PASS)
 
   params = pika.ConnectionParameters(
@@ -374,13 +342,4 @@ def main():
 
 
 if __name__ == "__main__":
-  # Wrap main in a supervised loop so unexpected exceptions do not cause the
-  # container to crash silently and produce multiple confusing startup logs.
-  while True:
-    try:
-      main()
-      # If main returns (e.g., clean shutdown), break the loop
-      break
-    except Exception:
-      logger.exception("Main crashed — sleeping and restarting main loop in %.1f seconds...", RABBIT_RECONNECT_DELAY)
-      time.sleep(RABBIT_RECONNECT_DELAY)
+  main()
