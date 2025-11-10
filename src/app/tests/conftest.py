@@ -1,13 +1,25 @@
+import os
+import socket
 import time
 import pytest
 import psycopg2
 
+def running_in_docker():
+    """Detecta si el código se ejecuta dentro de un contenedor Docker."""
+    try:
+        with open("/proc/1/cgroup", "rt") as f:
+            return "docker" in f.read() or "containerd" in f.read()
+    except Exception:
+        return False
+
+DB_HOST = "db" if running_in_docker() else "localhost"
+
 DB_CONFIG = {
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "postgres",
-    "host": "db",
-    "port": 5432,
+    "dbname": os.getenv("POSTGRES_DB", "postgres"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
+    "host": DB_HOST,
+    "port": int(os.getenv("POSTGRES_PORT", 5432)),
 }
 
 @pytest.fixture(scope="session")
@@ -22,8 +34,6 @@ def db_conn(db_config):
     for attempt in range(max_retries):
         try:
             conn = psycopg2.connect(**db_config)
-            # Autocommit por defecto para que una excepción en una sentencia
-            # no deje la conexión en estado aborted para otros tests.
             conn.autocommit = True
             yield conn
             try:
@@ -36,6 +46,5 @@ def db_conn(db_config):
             if attempt == max_retries - 1:
                 raise
             time.sleep(5)
-    # Si sale del loop sin conectar
     if last_exc:
         raise last_exc

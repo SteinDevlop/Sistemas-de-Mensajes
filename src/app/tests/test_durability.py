@@ -2,27 +2,49 @@ import time
 import pytest
 import psycopg2
 import docker
+import socket
+import os
+
+def resolve_db_host():
+    """
+    Devuelve 'db' si el hostname es resolvible (entorno Docker),
+    o 'localhost' si no se puede resolver (entorno local).
+    """
+    try:
+        socket.gethostbyname("db")
+        return "db"
+    except socket.error:
+        return "localhost"
+
+def running_in_docker():
+    """Detecta si el entorno actual está dentro de un contenedor Docker."""
+    try:
+        with open("/proc/1/cgroup", "rt") as f:
+            return "docker" in f.read() or "containerd" in f.read()
+    except Exception:
+        return False
+
+DB_HOST = "db" if running_in_docker() else "localhost"
 
 DB_CONFIG = {
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "postgres",
-    "host": "db",
-    "port": 5432,
+    "dbname": os.getenv("POSTGRES_DB", "postgres"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
+    "host": DB_HOST,
+    "port": int(os.getenv("POSTGRES_PORT", 5432)),
 }
 
+
 def _find_container(client, service_name):
-    # try compose label
     conts = client.containers.list(all=True, filters={"label": f"com.docker.compose.service={service_name}"})
     if conts:
         return conts[0]
-    # fallback: name contains
     for c in client.containers.list(all=True):
         if service_name in c.name:
             return c
     return None
 
-# Unit tests for _find_container (no docker daemon required)
+# Fake classes for unit testing
 class FakeContainer:
     def __init__(self, name, labels=None):
         self.name = name
@@ -63,14 +85,13 @@ def test_find_container_none():
     client = FakeClient([])
     assert _find_container(client, "consumer") is None
 
-# Integration-ish durability test kept minimal: skip if containers not present
+# Integration test
 def test_consumer_recovery_integration():
     client = docker.from_env()
     consumer = _find_container(client, "consumer")
     producer = _find_container(client, "producer")
     if not consumer or not producer:
         pytest.skip("producer/consumer not available for integration durability test")
-    # only basic check: stop/start and ensure no exceptions
     consumer.stop()
     time.sleep(1)
     try:
@@ -78,8 +99,7 @@ def test_consumer_recovery_integration():
     finally:
         consumer.start()
     time.sleep(2)
-    # DB reachable check (optional)
-    conn = psycopg2.connect(dbname="postgres", user="postgres", password="postgres", host="db")
+    conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
     cur.execute("SELECT 1")
     assert cur.fetchone()[0] == 1

@@ -1,13 +1,32 @@
 import psycopg2
 import time
 import pytest
+import socket
+import os
+
+def resolve_db_host():
+    try:
+        socket.gethostbyname("db")
+        return "db"
+    except socket.error:
+        return "localhost"
+
+def running_in_docker():
+    """Detecta si el entorno actual está dentro de un contenedor Docker."""
+    try:
+        with open("/proc/1/cgroup", "rt") as f:
+            return "docker" in f.read() or "containerd" in f.read()
+    except Exception:
+        return False
+
+DB_HOST = "db" if running_in_docker() else "localhost"
 
 DB_CONFIG = {
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "postgres",
-    "host": "db",
-    "port": 5432,
+    "dbname": os.getenv("POSTGRES_DB", "postgres"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
+    "host": DB_HOST,
+    "port": int(os.getenv("POSTGRES_PORT", 5432)),
 }
 
 @pytest.fixture(scope="module")
@@ -26,8 +45,6 @@ def db_conn():
 
 def test_data_persistence(db_conn):
     cursor = db_conn.cursor()
-    
-    # Asegurar que la estación existe para evitar violación de FK
     cursor.execute("""
         INSERT INTO weather_stations (id, name)
         VALUES (999, 'test_station')
@@ -35,11 +52,9 @@ def test_data_persistence(db_conn):
     """)
     db_conn.commit()
 
-    # Limpiar datos existentes
     cursor.execute("DELETE FROM weather_logs WHERE id_station = 999;")
     db_conn.commit()
     
-    # Insertar dato de prueba
     cursor.execute("""
         INSERT INTO weather_logs (id_station, dates, temperature_celsius)
         VALUES (999, NOW(), 22.5) RETURNING id;
@@ -47,22 +62,18 @@ def test_data_persistence(db_conn):
     log_id = cursor.fetchone()[0]
     db_conn.commit()
 
-    # Verificar que el dato existe
     cursor.execute("SELECT COUNT(*) FROM weather_logs WHERE id = %s;", (log_id,))
     count = cursor.fetchone()[0]
     assert count == 1, "El registro no se guardó correctamente"
 
-    # limpiar
     cursor.execute("DELETE FROM weather_logs WHERE id = %s;", (log_id,))
     db_conn.commit()
 
 def test_transaction_rollback(db_conn):
     cursor = db_conn.cursor()
-    # Ensure station exists
     cursor.execute("INSERT INTO weather_stations (id, name) VALUES (998, 'tx_station') ON CONFLICT (id) DO NOTHING;")
     db_conn.commit()
 
-    # Start a transaction, insert then rollback
     try:
         cursor.execute("BEGIN;")
         cursor.execute("""
@@ -71,10 +82,8 @@ def test_transaction_rollback(db_conn):
         """)
         row = cursor.fetchone()
         assert row is not None
-        # rollback
         cursor.execute("ROLLBACK;")
     finally:
-        # After rollback the row should not exist
         cursor.execute("SELECT COUNT(*) FROM weather_logs WHERE id_station = 998;")
         cnt = cursor.fetchone()[0]
         assert cnt == 0
