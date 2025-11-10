@@ -1,13 +1,27 @@
+# Usa una imagen base de Python ligera (slim) para reducir el tamaño final de la imagen.
 FROM python:3.9-slim
 
+# Establece el directorio de trabajo dentro del contenedor a '/app'.
 WORKDIR /app
 
-# Instalar dependencias básicas para tests
+# Instala las dependencias de Python necesarias para la ejecución de los tests.
+# - pytest: framework de pruebas.
+# - pytest-cov: para generar informes de cobertura de código.
+# - pika: librería para interactuar con RabbitMQ (servicio de mensajería).
+# - psycopg2-binary: driver para conectarse a PostgreSQL.
+# - docker: permite a los tests interactuar con la API de Docker (para control de contenedores).
 RUN pip install pytest pytest-cov pika psycopg2-binary docker
 
-# Montar el socket de Docker para permitir control de contenedores
+# Monta el socket de Docker para permitir que los tests dentro del contenedor
+# controlen o inspeccionen otros contenedores de Docker (necesario para la librería 'docker').
+# Esta línea es crucial para las pruebas de integración que gestionan servicios dependientes.
 VOLUME /var/run/docker.sock
 
+# Copia todo el contenido del directorio local (donde se ejecuta 'docker build')
+# al directorio de trabajo '/app' dentro del contenedor.
 COPY . .
 
+# Define el comando que se ejecutará por defecto al iniciar el contenedor.
+# Ejecuta pytest de forma verbosa (-v), genera un informe de cobertura (--cov=.),
+# y limita la ejecución a los tests dentro del subdirectorio 'tests/'.
 CMD ["pytest", "-v", "--cov=.", "tests/"]

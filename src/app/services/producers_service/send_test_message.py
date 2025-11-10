@@ -6,31 +6,34 @@ import time
 # === Configuración de conexión RabbitMQ ===
 RABBIT_USER = os.getenv("RABBIT_USER", "guest")
 RABBIT_PASS = os.getenv("RABBIT_PASS", "guest")
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+# Usa 'rabbitmq' si se ejecuta dentro del stack de Docker
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq") 
 
 credentials = pika.PlainCredentials(RABBIT_USER, RABBIT_PASS)
 connection = None
 
-# Esperar a que RabbitMQ esté listo
-for _ in range(10):
+# Esperar a que RabbitMQ esté listo con un reintento simple
+for i in range(1, 11):
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters(
             host=RABBITMQ_HOST,
             port=5672,
             credentials=credentials
         ))
+        print("Conexión a RabbitMQ exitosa.")
         break
     except Exception as e:
-        print("RabbitMQ no disponible, reintentando...")
+        print(f"RabbitMQ no disponible (intento {i}/10), reintentando en 3 segundos...")
         time.sleep(3)
 
 if not connection:
-    raise Exception("No se pudo conectar a RabbitMQ.")
+    raise Exception("No se pudo conectar a RabbitMQ después de múltiples intentos.")
 
 channel = connection.channel()
 
 # Asegurar que la cola existe
 queue_name = "weather_queue"
+# La cola debe ser duradera, como está configurada en el consumidor.
 channel.queue_declare(queue=queue_name, durable=True)
 
 # Mensaje de prueba (similar a lo que produce normalmente tu servicio)
@@ -44,9 +47,9 @@ test_message = {
     "pressure": 1013.2
 }
 
-# Enviar mensaje
+# Enviar mensaje al exchange por defecto, usando el nombre de la cola como routing key
 channel.basic_publish(
-    exchange='',
+    exchange='', # Exchange por defecto
     routing_key=queue_name,
     body=json.dumps(test_message),
     properties=pika.BasicProperties(
@@ -54,6 +57,6 @@ channel.basic_publish(
     )
 )
 
-print(" Mensaje de prueba enviado correctamente a RabbitMQ.")
+print(f"Mensaje de prueba enviado correctamente a RabbitMQ en la cola '{queue_name}'.")
 
 connection.close()
