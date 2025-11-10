@@ -1,18 +1,12 @@
 import os
-import socket
 import time
+import socket
 import pytest
 import psycopg2
 
-def running_in_docker():
-    """Detecta si el código se ejecuta dentro de un contenedor Docker."""
-    try:
-        with open("/proc/1/cgroup", "rt") as f:
-            return "docker" in f.read() or "containerd" in f.read()
-    except Exception:
-        return False
-
-DB_HOST = "db" if running_in_docker() else "localhost"
+# Use environment variable provided by docker-compose so tests inside the
+# `tests` container always resolve the DB host correctly (typically 'db').
+DB_HOST = os.getenv("POSTGRES_HOST", "db")
 
 DB_CONFIG = {
     "dbname": os.getenv("POSTGRES_DB", "postgres"),
@@ -33,6 +27,18 @@ def db_conn(db_config):
     last_exc = None
     for attempt in range(max_retries):
         try:
+            # First ensure the hostname resolves on the container/network DNS.
+            host = db_config.get("host")
+            try:
+                socket.gethostbyname(host)
+            except socket.gaierror:
+                # If DNS doesn't resolve yet, wait and retry
+                last_exc = psycopg2.OperationalError(f"could not resolve host {host}")
+                if attempt == max_retries - 1:
+                    raise last_exc
+                time.sleep(5)
+                continue
+
             conn = psycopg2.connect(**db_config)
             conn.autocommit = True
             yield conn

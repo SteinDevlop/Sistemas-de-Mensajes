@@ -1,25 +1,11 @@
 import psycopg2
 import time
 import pytest
-import socket
 import os
 
-def resolve_db_host():
-    try:
-        socket.gethostbyname("db")
-        return "db"
-    except socket.error:
-        return "localhost"
-
-def running_in_docker():
-    """Detecta si el entorno actual está dentro de un contenedor Docker."""
-    try:
-        with open("/proc/1/cgroup", "rt") as f:
-            return "docker" in f.read() or "containerd" in f.read()
-    except Exception:
-        return False
-
-DB_HOST = "db" if running_in_docker() else "localhost"
+# Read DB host from environment (set by docker-compose). This ensures the
+# tests container connects to the compose 'db' service instead of localhost.
+DB_HOST = os.getenv("POSTGRES_HOST", "db")
 
 DB_CONFIG = {
     "dbname": os.getenv("POSTGRES_DB", "postgres"),
@@ -29,19 +15,9 @@ DB_CONFIG = {
     "port": int(os.getenv("POSTGRES_PORT", 5432)),
 }
 
-@pytest.fixture(scope="module")
-def db_conn():
-    max_retries = 12
-    for attempt in range(max_retries):
-        try:
-            conn = psycopg2.connect(**DB_CONFIG)
-            yield conn
-            conn.close()
-            return
-        except psycopg2.OperationalError:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(5)
+# Use the shared `db_conn` fixture from `conftest.py` which includes DNS
+# resolution and retry logic. This file's tests receive `db_conn` as a
+# parameter (function-scoped connection) provided by conftest.
 
 def test_data_persistence(db_conn):
     cursor = db_conn.cursor()
